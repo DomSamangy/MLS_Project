@@ -1,0 +1,228 @@
+---
+title: "MLS"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+salaries <- read_csv("Csv/Salaries.csv")
+eligble_salaries <- salaries %>% filter(`Guaranteed Compensation` < 400000)
+
+# Retrieval & merging of data of eligible outfield players (not per 96)
+Player_xG <- read_csv("Csv/xG.csv")
+Player_xPass <- read_csv("Csv/xPass.csv")
+Player_AddedGoals <- read_csv("Csv/g+.csv")
+
+players_normal1 <- merge(eligble_salaries, Player_xG, by.x="Player", by.y="Player")
+players_normal2 <- merge(players_normal1, Player_xPass, by.x="Player", by.y="Player")
+players_normal3 <- merge(players_normal2, Player_AddedGoals, by.x="Player", by.y="Player")
+
+eligible_players_normalstats <- players_normal3
+
+# Retrieval & merging of data of eligible outfield players (per 96)
+Player_xGp96 <- read_csv("Csv/xGp96.csv")
+Player_xPass96 <- read_csv("Csv/xPassp96.csv")
+Player_AddedGoals96 <- read_csv("Csv/g+p96.csv")
+
+players_per96_1 <- merge(eligble_salaries, Player_xGp96, by.x="Player", by.y="Player")
+players_per96_2 <- merge(players_per96_1, Player_xPass96, by.x="Player", by.y="Player")
+players_per96_3 <- merge(players_per96_2, Player_AddedGoals96, by.x="Player", by.y="Player")
+
+eligible_players_per96stats <- players_per96_3
+
+# Retrieval & merging of data of eligible goalies (not per 96)
+PlayerGoaliexG <- read_csv("Csv/Goalie_xg.csv")
+
+eligible_goalies_normalstats <- merge(eligble_salaries, PlayerGoaliexG, by.x="Player", by.y="Player")
+
+# Retrieval & merging of data of eligible goalies (per 96)
+PlayerGoaliexGp96 <- read_csv("Csv/Goalie_xgp96.csv")
+
+eligible_goalies_per96stats <- merge(eligble_salaries, PlayerGoaliexGp96, by.x="Player", by.y="Player")
+
+# Retrieval & merging of team data (not per 96)
+Team_xG <- read_csv("Csv/Team_xG.csv")
+Team_xPass <- read_csv("Csv/Team_xPass.csv")
+
+teams_normal <- merge(Team_xG, Team_xPass, by.x="Team", by.y="Team")
+
+# Retrieval & merging of team data (per 96)
+Team_xGp96 <- read_csv("Csv/Team_xGp96.csv")
+Team_xPassp96 <- read_csv("Csv/Team_xPassp96.csv")
+
+teams_per96 <- merge(Team_xGp96, Team_xPassp96, by.x="Team", by.y="Team")
+
+teams_normal %>% write_csv("Csv/Teams_Normal.csv")
+teams_per96 %>% write_csv("Csv/Teams_Per96.csv")
+```
+
+```{r}
+library(plotly)
+teams_per96 <- teams_per96 %>% mutate(`GF-xGF` = GF - xGF)
+teams_per96 <- teams_per96 %>% mutate(`GA-xGA` = GA - xGA)
+teams_normal <- teams_normal %>% mutate(`GF-xGF` = GF - xGF)
+teams_normal <- teams_normal %>% mutate(`GA-xGA` = GA - xGA)
+
+# Determining which team to take control of 
+
+  # ggplot 
+ggplot(teams_normal, aes(x=`GF-xGF`, y=`GA-xGA`, color=Team)) + ggtitle("MLS Team's 2019 Season - GF-xGF vs. GA-xGA") + geom_point() + geom_hline(yintercept = mean(teams_per96$`GF-xGF`), color="black") + geom_vline(xintercept = mean(teams_per96$`GA-xGA`), color="black") + annotate("text", x=-9.5, y=13, label="Worse Defense, Worse Offense", size=3) + annotate("text", x=-9.5, y=-19, label="Better Defense, Worse Offense", size=3) + annotate("text", x=3.3, y=13, label="Better Offense, Worse Defense", size=3) + annotate("text", x=3.3, y=-19, label="Better Offense, Better Defense", size=3) + annotate("text", x=-12.41, y=10, label="SKC", color="navyblue") + theme(plot.title = element_text(hjust = 1)) 
+
+  # plotly - allows to hover teams for easier identification if needed 
+teams_normal %>% plot_ly(x = ~`GF-xGF`,y = ~`GA-xGA`, color = ~Team) 
+
+# SKC has worst performing side of a ball against expectation (12.41 less GF scored than expected)                                                                                        -- MTL defense is next at 11.69 GA above expectation                                          -- Because SKC is struggling on both ends, I feel a replacement is more urgent for them       -- Will look for more productive/clinical options at F for SKC
+```
+
+```{r}
+library(scales)
+# Player evaluations will occur on per96 statistics 
+# Placing requirement for minutes on Per96 datasets                                               -- Will remove randomness from the figures of players with little game time
+# 563 minutes was chosen as its 20% of possible minutes on average (34*96=3264, 3264*.2=652.8)
+filtered_eligible_normal <- eligible_players_normalstats %>% filter(Minutes > 653) 
+filtered_eligible_per96 <- eligible_players_per96stats %>% filter(Minutes > 653)
+
+filtered_eligible_normal <- filtered_eligible_normal %>% filter(Position == "F")
+filtered_eligible_per96 <- filtered_eligible_per96 %>% filter(Position == "F")
+
+34*96
+# Creating metric to identify players who create most offensively 
+filtered_eligible_per96 <- filtered_eligible_per96 %>% mutate(OffValue = `xG`+`xA`+`SoT`+`xPA through goals`+`xPA thorugh shots`+`KeyP`)
+
+# Plots to identify which players offer most value 
+ggplot(filtered_eligible_per96, aes(x=`Guaranteed Compensation`, y=`OffValue`, color=Player, )) + geom_point() + annotate("text", x=320000, y=4.7, label="Mezquida", color="navyblue") + annotate("text", x=277000, y=3.6, label="Przybylko", color="navyblue") + annotate("text", x=137658, y=3.4, label="Hamilton", color="navyblue") + ggtitle("Player's OffValue vs. Compensation") + theme(plot.title = element_text(hjust = .5)) + scale_x_continuous(labels = comma)
+
+filtered_eligible_per96 %>% plot_ly(x = ~`Guaranteed Compensation`,y = ~`OffValue`, color = ~Player) 
+
+# Identified 3 targets of 
+  # -- Nicolás Mezquida (Most productive & creates but not true striker, High-risk financially)
+  # -- Kacper Przybylko (True striker w/ 15 goals in '19 season, Mid-risk financially)
+  # -- Jordan Hamilton (Striker who produces on limited minutes (767), Low-risk financially)
+```
+
+```{r}
+library("fmsb")
+# Creating radar chart for each target for further investigation
+
+## Nicolás Mezquida
+Mezquida_data <- data.frame(xG = c(max(filtered_eligible_per96$xG), 0, 0.32, mean(filtered_eligible_per96$xG)),
+                  xA = c(max(filtered_eligible_per96$xA), 0, .27, mean(filtered_eligible_per96$xA)),
+                  KeyP = c(max(filtered_eligible_per96$KeyP), 0, 1.98, mean(filtered_eligible_per96$KeyP)),
+                  ExpPA_Shots = c(max(filtered_eligible_per96$`xPA thorugh shots`), 0, .27, mean(filtered_eligible_per96$`xPA thorugh shots`)),
+                  SoT = c(max(filtered_eligible_per96$SoT), 0, 1.62, mean(filtered_eligible_per96$SoT)),
+                  ExpPA_Goals = c(max(filtered_eligible_per96$`xPA through goals`), 0, .32, mean(filtered_eligible_per96$`xPA through goals`)),
+                   row.names = c("max", "min", "Nicolás Mezquida", "Eligible Forward Avg."))
+     
+colors_fill <- c(scales::alpha("gold", 0.2),
+                 scales::alpha("gray", 0.4))
+    
+colors_line <- c(scales::alpha("gold", 0.9),
+                scales::alpha("gray", 0.9))
+     
+radarchart(Mezquida_data, 
+           seg = 4,  # Number of axis segments
+           title = "Radar Chart of Player's OffValue Stats (Per 96)",
+           col.main = "blue",
+           pcol = colors_line,
+           pfcol = colors_fill,
+           plwd = 4,
+           axislabcol = "black",
+           paxislabels = 0,
+           palcex = 3,
+           cglty = 1)
+
+legend(x=.8, y=1.35, legend = rownames(Mezquida_data[-c(1,2),]), 
+       bty = "n", pch=20 , col = colors_line, cex = 1, pt.cex = 3)
+
+
+## Kacper Przybylko
+Przybylko_data <- data.frame(xG = c(max(filtered_eligible_per96$xG), 0, 0.5, mean(filtered_eligible_per96$xG)),
+                  xA = c(max(filtered_eligible_per96$xA), 0, .11, mean(filtered_eligible_per96$xA)),
+                  KeyP = c(max(filtered_eligible_per96$KeyP), 0, .9, mean(filtered_eligible_per96$KeyP)),
+                  ExpPA_Shots = c(max(filtered_eligible_per96$`xPA thorugh shots`), 0, .32, mean(filtered_eligible_per96$`xPA thorugh shots`)),
+                  SoT = c(max(filtered_eligible_per96$SoT), 0, 1.4, mean(filtered_eligible_per96$SoT)),
+                  ExpPA_Goals = c(max(filtered_eligible_per96$`xPA through goals`), 0, .44, mean(filtered_eligible_per96$`xPA through goals`)),
+                   row.names = c("max", "min", "Kacper Przybylko", "Eligible Forward Avg."))
+    
+colors_fill <- c(scales::alpha("gold", 0.2),
+                 scales::alpha("gray", 0.4))
+   
+colors_line <- c(scales::alpha("gold", 0.9),
+                scales::alpha("gray", 0.9))
+     
+radarchart(Przybylko_data, 
+           seg = 4,  # Number of axis segments
+           title = "Radar Chart of Player's OffValue Stats (Per 96)",
+           col.main = "blue",
+           pcol = colors_line,
+           pfcol = colors_fill,
+           plwd = 4,
+           axislabcol = "black",
+           paxislabels = 0,
+           palcex = 3,
+           cglty = 1)
+    
+legend(x=.8, y=1.35, legend = rownames(Przybylko_data[-c(1,2),]), 
+       bty = "n", pch=20 , col = colors_line, cex = 1, pt.cex = 3)
+
+
+## Jordan Hamilton
+Hamilton_data <- data.frame(xG = c(max(filtered_eligible_per96$xG), 0, 0.66, mean(filtered_eligible_per96$xG)),
+                  xA = c(max(filtered_eligible_per96$xA), 0, .01, mean(filtered_eligible_per96$xA)),
+                  KeyP = c(max(filtered_eligible_per96$KeyP), 0, .13, mean(filtered_eligible_per96$KeyP)),
+                  ExpPA_Shots = c(max(filtered_eligible_per96$`xPA thorugh shots`), 0, .54, mean(filtered_eligible_per96$`xPA thorugh shots`)),
+                  SoT = c(max(filtered_eligible_per96$SoT), 0, 1.5, mean(filtered_eligible_per96$SoT)),
+                  ExpPA_Goals = c(max(filtered_eligible_per96$`xPA through goals`), 0, .49, mean(filtered_eligible_per96$`xPA through goals`)),
+                   row.names = c("max", "min", "Jordan Hamilton", "Eligible Forward Avg."))
+      
+
+colors_fill <- c(scales::alpha("gold", 0.2),
+                 scales::alpha("gray", 0.4))
+
+colors_line <- c(scales::alpha("gold", 0.9),
+                scales::alpha("gray", 0.9))
+      
+radarchart(Hamilton_data, 
+           seg = 4,  # Number of axis segments
+           title = "Radar Chart of Player's OffValue Stats (Per 96)",
+           col.main = "blue",
+           pcol = colors_line,
+           pfcol = colors_fill,
+           plwd = 4,
+           axislabcol = "black",
+           paxislabels = 0,
+           palcex = 3,
+           cglty = 1)
+
+legend(x=.8, y=1.35, legend = rownames(Hamilton_data[-c(1,2),]), 
+       bty = "n", pch=20 , col = colors_line, cex = 1, pt.cex = 3)
+```
+
+```{r}
+# Determine player
+    # -- Kacper Przybylko 
+      # -- Adds the most value as finisher/strikes as SKC were not clinical                           -- Relatively affordable at $277,000
+```
+
+
+```{r}
+# Identify trade target & trade piece
+
+ggplot(teams_normal, aes(x=`GF-xGF`, y=`GA-xGA`, color=Team)) + ggtitle("MLS Team's 2019 Season - GF-xGF vs. GA-xGA") + geom_point() + geom_hline(yintercept = mean(teams_per96$`GF-xGF`), color="black") + geom_vline(xintercept = mean(teams_per96$`GA-xGA`), color="black") + annotate("text", x=-9.5, y=13, label="Worse Defense, Worse Offense", size=3) + annotate("text", x=-9.5, y=-19, label="Better Defense, Worse Offense", size=3) + annotate("text", x=3.3, y=13, label="Better Offense, Worse Defense", size=3) + annotate("text", x=3.3, y=-19, label="Better Offense, Better Defense", size=3) + annotate("text", x=0, y=3, label="PHI", color="navyblue") + theme(plot.title = element_text(hjust = 1)) 
+
+SKC1 <- merge(salaries, Player_xGp96, by.x="Player", by.y="Player")
+SKC2 <- merge(SKC1, Player_xPass96, by.x="Player", by.y="Player")
+SKC3 <- merge(SKC2, Player_AddedGoals96, by.x="Player", by.y="Player")
+
+SKC_Roster <- SKC3 %>% filter(Team=="SKC")
+
+Trade_Piece <- eligible_players_per96stats %>% filter(Team=="SKC")
+
+# Trade barath (Similar contracts & team signed Winston Reid & Puncec)
+```
+
